@@ -260,13 +260,11 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
 
   case sedutiloption::yesIreallywanttoERASEALLmydatausingthePSID:
   case sedutiloption::PSIDrevert:
-    LOG(D) << "Performing a PSID Revert on " << argv[opts.device] <<
-      " with password " << argv[opts.password] << " " << argv[opts.device];
+    LOG(D) << "Performing a PSID Revert on " << argv[opts.device];
     return d->revertTPer(argv[opts.password], 1, 0);
 
   case sedutiloption::PSIDrevertAdminSP:
-    LOG(D) << "Performing a PSID RevertAdminSP on " << argv[opts.device] <<
-      " with password " << argv[opts.password] << " " << argv[opts.device];
+    LOG(D) << "Performing a PSID RevertAdminSP on " << argv[opts.device];
     return d->revertTPer(argv[opts.password], 1, 1);
 
   case sedutiloption::eraseLockingRange:
