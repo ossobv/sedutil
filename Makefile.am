@@ -112,6 +112,8 @@ sbin_PROGRAMS = sedutil-cli linuxpba
 sedutil_cli_SOURCES = \
 Common/DtaOptions.cpp \
 Common/DtaOptions.h \
+LinuxPBA/GetPassPhrase.cpp \
+LinuxPBA/GetPassPhrase.h \
 $(SEDUTIL_LINUX_CODE) \
 $(SEDUTIL_COMMON_CODE) \
 $(SEDUTIL_CUSTOMIZATIONS_COMMON_CODE) \

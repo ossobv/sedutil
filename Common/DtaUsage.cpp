@@ -47,6 +47,16 @@ void usage()
     printf("-n (optional)                       no password hashing. Passwords will be sent in clear text!\n");
     printf("-t (optional)                       translate hex password strings (only when not hashing, requires -n)\n");
     printf("-l (optional)                       log style output to stderr only\n");
+    printf("-f (optional)                       read passwords from a source instead of the command line,\n");
+    printf("                                    so they do not appear in ps output or execve audit logs.\n");
+    printf("                                    Each <password> argument becomes one of:\n");
+    printf("                                      <path>        first line of that file\n");
+    printf("                                      file:<path>   the same, said explicitly\n");
+    printf("                                      fd:<n>        one line from an inherited file descriptor\n");
+    printf("                                      -             one line from standard input (same as fd:0)\n");
+    printf("                                      env:<name>    the value of that environment variable\n");
+    printf("                                      prompt        ask on /dev/tty, with echo off\n");
+    printf("                                    One line is one password, for every source.\n");
     printf("\n");
     printf("actions \n");
 
@@ -66,6 +76,10 @@ void usage()
     printf("sedutil-cli --query %s \n", DEVICEEXAMPLE);
     printf("sedutil-cli --yesIreallywanttoERASEALLmydatausingthePSID <PSIDALLCAPSNODASHES> %s \n", DEVICEEXAMPLE);
     printf("sedutil-cli --initialSetup <newSIDpassword> %s \n", DEVICEEXAMPLE);
+    printf("sedutil-cli -f --listLockingRanges /run/secret/pw %s \n", DEVICEEXAMPLE);
+    printf("sedutil-cli -f --listLockingRanges env:SEDUTIL_PASSWORD %s \n", DEVICEEXAMPLE);
+    printf("sedutil-cli -f --listLockingRanges prompt %s \n", DEVICEEXAMPLE);
+    printf("sedutil-cli -f --setSIDPassword fd:3 fd:4 %s 3<old.pipe 4<new.pipe \n", DEVICEEXAMPLE);
 
     // Customization examples
     printf("sedutil-cli --version \n");

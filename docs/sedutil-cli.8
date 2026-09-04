@@ -4,7 +4,7 @@
 sedutil-cli \- util to manage TCG Opal 2.0 self encrypting drives
 
 .SH SYNOPSIS
-sedutil\-cli <\-v> <\-n> <action> <options> <device>
+sedutil\-cli <\-v> <\-n> <\-f> <action> <options> <device>
 
 .SH DESCRIPTION
 sedutil-cli is a utility to manage self encrypting drives that conform
@@ -22,6 +22,39 @@ contents of /sys/module/libata/parameters/allow_tpm to a from a
 increase verbosity, one to five v's
 .IP "\-n (optional)"
 no password hashing. Passwords will be sent in clear text!
+.IP "\-f (optional)"
+Every <password> argument names a source to read the password from, rather
+than being the password itself. This keeps secrets out of
+.BR ps (1)
+output and out of execve audit logs. The forms are:
+.RS
+.IP "\fIpath\fR" 14
+the first line of that file
+.IP "\fBfile:\fIpath\fR"
+the same, said explicitly
+.IP "\fBfd:\fIn\fR"
+one line from an inherited file descriptor
+.IP "\fB\-\fR"
+one line from standard input, the same as \fBfd:0\fR
+.IP "\fBenv:\fIname\fR"
+the value of that environment variable
+.IP "\fBprompt\fR"
+ask on /dev/tty, with echo off
+.RE
+.IP
+One line is one password, for every source: reading stops at the first
+newline, a trailing carriage return is dropped so CRLF files work, and a
+source that ends without a newline yields everything it held. A password may
+therefore not contain a newline when read this way, and is limited to 512
+characters. An empty first line is the empty password, which is how
+.B ""
+for MSID stays expressible.
+.IP
+Because each argument carries its own source, the two-password actions take
+two: \fB\-f \-\-setSIDPassword env:OLD env:NEW\fR. Repeating one stream reads
+consecutive lines from it, so \fB\-f \-\-setSIDPassword fd:0 fd:0\fR takes the
+old password from the first line of standard input and the new one from the
+second.
 
 .SS Actions
 .IP \-\-scan

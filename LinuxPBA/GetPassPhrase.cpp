@@ -27,68 +27,78 @@ using namespace std;
 
 static struct termios tiosold, tiosnew;
 /* Initialize new terminal i/o settings */
-void initTermios(int echo) 
+void initTermios(int fd, int echo)
 {
-  tcgetattr(0, &tiosold); /* grab old terminal i/o settings */
+  tcgetattr(fd, &tiosold); /* grab old terminal i/o settings */
   tiosnew = tiosold; /* make new settings same as old settings */
   tiosnew.c_lflag &= ~ICANON; /* disable buffered i/o */
-  tiosnew.c_lflag &= echo ? ECHO : ~ECHO; /* set echo mode */
-  tcsetattr(0, TCSANOW, &tiosnew); /* use these new terminal i/o settings now */
+  if (echo)
+    tiosnew.c_lflag |= ECHO;
+  else
+    tiosnew.c_lflag &= ~ECHO;
+  tcsetattr(fd, TCSANOW, &tiosnew); /* use these new terminal i/o settings now */
 }
 
 /* Restore old terminal i/o settings */
-void resetTermios(void) 
+void resetTermios(int fd)
 {
-  tcsetattr(0, TCSANOW, &tiosold);
+  tcsetattr(fd, TCSANOW, &tiosold);
 }
 
-/* Read 1 character - echo defines echo mode */
-char getch_(int echo=0) 
+/* Read 1 character - echo defines echo mode.  Returns EOF at end of input. */
+int getch_(FILE *in, int echo)
 {
-  char ch;
-  initTermios(echo);
-  ch = getchar();
-  resetTermios();
+  initTermios(fileno(in), echo);
+  int ch = fgetc(in);
+  resetTermios(fileno(in));
   return ch;
 }
 
-/* Read 1 character without echo */
-char getch(void) 
+string GetPassPhrase(const char *prompt, bool show_asterisk, FILE *console)
 {
-  return getch_(0);
-}
+  const int BACKSPACE=127;
+  const int LINEFEED=10;
+  const int CARRIAGERETURN=13;
+  const int ESCAPE=27;
 
-string GetPassPhrase(const char *prompt, bool show_asterisk)
-{
-  const char BACKSPACE=127;
-  const char RETURN=10;
+  /* The PBA prompts on the standard streams.  sedutil-cli hands us an open
+   * /dev/tty instead, so that `-f prompt' keeps working with a redirected
+   * stdin -- reading fd 0 there would eat the piped data, not the user. */
+  FILE * in  = (console != NULL) ? console : stdin;
+  FILE * out = (console != NULL) ? console : stdout;
+
   string password;
-  unsigned char ch=0;
   LOG(D4) << "Enter GetPassPhrase" << endl;
-  printf("\n\n%s",prompt);
-  while((ch=getch_())!=RETURN)
+  fprintf(out, "\n\n%s", prompt);
+  fflush(out);
+
+  for (;;)
     {
-//      LOG(I) << "key value" << (uint16_t) ch << endl;
-       if(ch==BACKSPACE)
-         {
-            if(password.length()!=0)
-              {
-                 if(show_asterisk)
-                 printf("\b \b");
-                 password.resize(password.length()-1);
-              }
-         }
-       else if(ch!=27) // ignore 'escape' key
-         {
-             password+=ch;
-             if(show_asterisk)
-                 printf("*");
-         }
+      int ch = getch_(in, 0);
+      /* End of input is end of the phrase, not a reason to spin forever
+         reading EOF -- which is what a bare getchar() loop used to do. */
+      if (ch == EOF || ch == LINEFEED || ch == CARRIAGERETURN)
+        break;
+      if (ch == BACKSPACE)
+        {
+          if (password.length() != 0)
+            {
+              if (show_asterisk)
+                fprintf(out, "\b \b");
+              password.resize(password.length()-1);
+            }
+        }
+      else if (ch != ESCAPE) // ignore 'escape' key
+        {
+          password += (char)ch;
+          if (show_asterisk)
+            fprintf(out, "*");
+        }
+      fflush(out);
     }
+
+  fprintf(out, "\n");
+  fflush(out);
 
   return password;
 }
-
-
-
-

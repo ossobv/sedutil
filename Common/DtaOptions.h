@@ -28,6 +28,7 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include <cstdint>
+#include <cstddef>
 
 #include "log.h"
 
@@ -38,12 +39,15 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 #endif // DEBUG
 #define MAX_LOGGING_LEVEL 7
 
+/** Longest password accepted, in characters.  Buffers are one larger. */
+#define DTA_PASSWORD_MAX 512
+
 
 /** Structure representing the command line issued to the program */
 typedef struct _DTA_OPTIONS {
-    uint8_t password;             /**< password supplied */
+    uint8_t password;             /**< argv index of the password argument */
     uint8_t userid;               /**< userid supplied */
-    uint8_t newpassword;          /**< new password for password change */
+    uint8_t newpassword;          /**< argv index of the new password argument */
     uint8_t pbafile;              /**< file name for loadPBAimage command */
     uint8_t device;               /**< device name  */
     uint8_t action;               /**< option requested */
@@ -64,7 +68,19 @@ typedef struct _DTA_OPTIONS {
     uint8_t dsnum;	          /**< which data store to read write*/
     uint32_t startpos;	          /**< data store start position  */
     uint32_t len;	          /**< data store length */
+
+    bool password_from_source;    /**< -f : password arguments are source specs */
+
+    /* The passwords themselves, resolved once by DtaOptions().  Use these
+     * rather than argv[password] / argv[newpassword]: with -f the argument is
+     * the name of a source, not the secret.  main() wipes both on the way
+     * out. */
+    char password_data[DTA_PASSWORD_MAX + 1];
+    char newpassword_data[DTA_PASSWORD_MAX + 1];
 } DTA_OPTIONS;
+
+/** Overwrite a buffer that held a secret, in a way the compiler may not elide. */
+void DtaWipe(void * buffer, size_t length);
 
 /** Print a usage message */
 extern void usage();

@@ -28,6 +28,212 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 #include "DtaUsage.h"
 #include "Version.h"
 
+#include <climits>
+#include <cstdlib>
+#include <cstring>
+#include <cerrno>
+#include <string>
+
+#if !defined(_WIN32)
+#include <unistd.h>
+#include <fcntl.h>
+#include "GetPassPhrase.h"
+#endif
+
+
+void DtaWipe(void * buffer, size_t length)
+{
+#if defined(_WIN32)
+  // No explicit_bzero here; a volatile store is the portable equivalent.
+  volatile unsigned char * p = static_cast<volatile unsigned char *>(buffer);
+  while (length--) *p++ = 0;
+#else
+  explicit_bzero(buffer, length);
+#endif
+}
+
+
+#if !defined(_WIN32)
+
+/** Read one line -- the password -- from an already-open file descriptor.
+ *
+ * One byte at a time, deliberately.  Everything after the first newline
+ * belongs to whoever reads next, which is what lets
+ * `--setSIDPassword fd:0 fd:0' take two consecutive lines from one stream.
+ * A buffered read would swallow the second one.
+ */
+static uint8_t readPasswordFromFd(const char * what, int fd,
+                                  char * out, size_t outsize)
+{
+  size_t length = 0;
+
+  for (;;) {
+    char c;
+    const ssize_t n = read(fd, &c, 1);
+    if (n < 0) {
+      if (EINTR == errno) continue;
+      LOG(E) << "Cannot read the " << what << ": " << strerror(errno);
+      return DTAERROR_INVALID_COMMAND;
+    }
+    if (0 == n)    break;             // source ended without a newline
+    if ('\n' == c) break;             // one line is one password
+    if ('\0' == c) {
+      // The password reaches DtaHashPwd() as a C string and would be
+      // truncated here without a word.
+      LOG(E) << "The " << what << " contains a NUL byte";
+      return DTAERROR_INVALID_COMMAND;
+    }
+    if (length + 1 >= outsize) {
+      LOG(E) << "The " << what << " is longer than "
+             << (unsigned int)(outsize - 1) << " characters";
+      return DTAERROR_INVALID_COMMAND;
+    }
+    out[length++] = c;
+  }
+
+  if (0 < length && '\r' == out[length - 1])  // so CRLF files work
+    length--;
+
+  out[length] = '\0';
+  return DTAERROR_SUCCESS;
+}
+
+/** Apply the same one-line rule to a password already in memory. */
+static uint8_t copyPasswordLine(const char * what, const char * value,
+                                char * out, size_t outsize)
+{
+  size_t length = 0;
+
+  while ('\0' != value[length] && '\n' != value[length]) {
+    if (length + 1 >= outsize) {
+      LOG(E) << "The " << what << " is longer than "
+             << (unsigned int)(outsize - 1) << " characters";
+      return DTAERROR_INVALID_COMMAND;
+    }
+    out[length] = value[length];
+    length++;
+  }
+
+  if (0 < length && '\r' == out[length - 1])
+    length--;
+
+  out[length] = '\0';
+  return DTAERROR_SUCCESS;
+}
+
+/** Resolve one -f source specification into the password it names.
+ *
+ * The bare form is a path, so the maintainer's "-f just reinterprets the
+ * argument as a file name" reading is the default; the prefixes are additions
+ * to it.  A file actually named "prompt" or "-" is reachable as "file:prompt".
+ */
+static uint8_t readPasswordFromSource(const char * what, const char * spec,
+                                      char * out, size_t outsize)
+{
+  // "-" and "fd:N" -- an inherited file descriptor
+  int fd = -1;
+  if (0 == strcmp("-", spec)) {
+    fd = STDIN_FILENO;
+  } else if (0 == strncmp("fd:", spec, 3)) {
+    char * end = NULL;
+    const long n = strtol(spec + 3, &end, 10);
+    if (end == spec + 3 || '\0' != *end || n < 0 || n > INT_MAX) {
+      LOG(E) << "Not a file descriptor number: \"" << spec << "\"";
+      return DTAERROR_INVALID_COMMAND;
+    }
+    fd = (int)n;
+  }
+  if (0 <= fd)
+    return readPasswordFromFd(what, fd, out, outsize);
+
+  // "env:NAME" -- a named environment variable.  Unset is an error; set to
+  // the empty string is the empty password.
+  if (0 == strncmp("env:", spec, 4)) {
+    const char * const name = spec + 4;
+    const char * const value = getenv(name);
+    if (NULL == value) {
+      LOG(E) << "Environment variable " << name << " is not set";
+      return DTAERROR_INVALID_COMMAND;
+    }
+    return copyPasswordLine(what, value, out, outsize);
+  }
+
+  // "prompt" -- the controlling terminal, echo off.  Not stdin: `-f prompt'
+  // has to keep working when stdin is a pipe.
+  if (0 == strcmp("prompt", spec)) {
+    FILE * const tty = fopen("/dev/tty", "r+");
+    if (NULL == tty) {
+      LOG(E) << "Cannot open /dev/tty to ask for the " << what << ": " << strerror(errno);
+      return DTAERROR_INVALID_COMMAND;
+    }
+    // Unbuffered, so a read stops at the end of the line instead of pulling
+    // the rest of the terminal input into a buffer we are about to close.
+    // That is what lets "-f --setSIDPassword prompt prompt" ask twice.
+    setvbuf(tty, NULL, _IONBF, 0);
+    const std::string prompt = std::string("Enter the ") + what + ": ";
+    std::string phrase = GetPassPhrase(prompt.c_str(), false, tty);
+    fclose(tty);
+    const uint8_t result = copyPasswordLine(what, phrase.c_str(), out, outsize);
+    if (!phrase.empty())
+      DtaWipe(&phrase[0], phrase.size());
+    return result;
+  }
+
+  // "file:PATH", or a bare path
+  const char * const path = (0 == strncmp("file:", spec, 5)) ? spec + 5 : spec;
+  const int opened = open(path, O_RDONLY);
+  if (opened < 0) {
+    LOG(E) << "Cannot open " << path << ": " << strerror(errno);
+    return DTAERROR_INVALID_COMMAND;
+  }
+  const uint8_t result = readPasswordFromFd(what, opened, out, outsize);
+  close(opened);
+  return result;
+}
+
+#endif // !_WIN32
+
+
+/** Turn one password argument into the password itself.
+ *
+ * Without -f the argument is the password.  With -f it names a source and the
+ * password is one line read from that source.  Either way opts->*_data holds
+ * the secret afterwards, and argv is never dereferenced for it again.
+ */
+static uint8_t resolvePassword(int argc, char * argv[], const char * what,
+                               uint8_t index, bool fromSource,
+                               char * out, size_t outsize)
+{
+  out[0] = '\0';
+
+  if (0 == index || index >= argc)
+    return DTAERROR_SUCCESS;    // this action takes no such password
+
+  const char * const argument = argv[index];
+
+  if (!fromSource) {
+    if (strlen(argument) >= outsize) {
+      LOG(E) << "The " << what << " is longer than "
+             << (unsigned int)(outsize - 1) << " characters";
+      return DTAERROR_INVALID_COMMAND;
+    }
+    strcpy(out, argument);
+    return DTAERROR_SUCCESS;
+  }
+
+#if defined(_WIN32)
+  (void)argument;
+  LOG(E) << "-f is not supported on this platform";
+  return DTAERROR_INVALID_COMMAND;
+#else
+  LOG(D1) << "Reading the " << what << " from " << argument;
+  const uint8_t result = readPasswordFromSource(what, argument, out, outsize);
+  if (DTAERROR_SUCCESS != result)
+    DtaWipe(out, outsize);   // do not leave half a secret behind on the way out
+  return result;
+#endif
+}
+
 
 #define LOCKINGRANGEARG(lockingrange) \
 TESTARG(0, lockingrange, 0)            \
@@ -118,6 +324,10 @@ uint8_t DtaOptions(int argc, char * argv[], DTA_OPTIONS * opts)
           baseOptions += 1;
           opts->no_hash_passwords = true;
           LOG(D) << "Password hashing is disabled";
+        } else if (!(strcmp("-f", argv[i]))) {
+          baseOptions += 1;
+          opts->password_from_source = true;
+          LOG(D) << "Password arguments name a source, not the password itself";
         } else if (!strcmp("-l", argv[i])) {
           baseOptions += 1;
           opts->output_format = sedutilNormal;
@@ -137,5 +347,24 @@ uint8_t DtaOptions(int argc, char * argv[], DTA_OPTIONS * opts)
 			return DTAERROR_INVALID_COMMAND;
         }
     }
+
+    // Now that the argument loop has settled the argv indices, turn the
+    // password arguments into the passwords themselves, once.  Order matters:
+    // the password precedes the new password in argv for every action, so
+    // "--setSIDPassword fd:0 fd:0" reads them in that order off one stream.
+    uint8_t result;
+
+    result = resolvePassword(argc, argv, "password",
+                             opts->password, opts->password_from_source,
+                             opts->password_data, sizeof(opts->password_data));
+    if (DTAERROR_SUCCESS != result)
+        return result;
+
+    result = resolvePassword(argc, argv, "new password",
+                             opts->newpassword, opts->password_from_source,
+                             opts->newpassword_data, sizeof(opts->newpassword_data));
+    if (DTAERROR_SUCCESS != result)
+        return result;
+
     return DTAERROR_SUCCESS;
 }

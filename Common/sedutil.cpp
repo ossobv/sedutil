@@ -91,25 +91,32 @@ static uint8_t hashvalidate(char * password, char *devname)
 }
 
 static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS &opts) {
+  // DtaOptions() has already resolved these, from argv or -- under -f -- from
+  // whatever source the argument named.  Never reach back into argv for a
+  // password: with -f the argument there is a file name, not the secret.
+  // const_cast because the DtaDev methods take char *.
+  char * const password    = const_cast<char *>(opts.password_data);
+  char * const newpassword = const_cast<char *>(opts.newpassword_data);
+
   switch (opts.action) {
   case sedutiloption::initialSetup:
     LOG(D) << "Performing initial setup to use sedutil on drive " << argv[opts.device];
-    return (d->initialSetup(argv[opts.password]));
+    return (d->initialSetup(password));
   case sedutiloption::setup_SUM:
     LOG(D) << "Performing SUM setup on drive " << argv[opts.device];
     return (d->setup_SUM(opts.lockingrange,
                          (unsigned long long)atoll(argv[opts.lrstart]),
                          (unsigned long long)atoll(argv[opts.lrlength]),
-                         argv[opts.password], argv[opts.newpassword]));
+                         password, newpassword));
 
   case sedutiloption::setSIDPassword:
     LOG(D) << "Performing setSIDPassword " << argv[opts.device];;
-    return d->setSIDPassword(argv[opts.password], argv[opts.newpassword]);
+    return d->setSIDPassword(password, newpassword);
 
   case sedutiloption::setAdmin1Pwd:
     LOG(D) << "Performing setPAdmin1Pwd " << argv[opts.device];;
-    return d->setPassword(argv[opts.password], (char *) "Admin1",
-                          argv[opts.newpassword]);
+    return d->setPassword(password, (char *) "Admin1",
+                          newpassword);
 
   case sedutiloption::getmfgstate:
     LOG(D) << "get manufacture life cycle state " << argv[opts.device];;
@@ -117,45 +124,45 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
 
   case sedutiloption::activate:
     LOG(D) << "activate LockingSP with MSID " << argv[opts.device];;
-    return d->activate(argv[opts.password]);
+    return d->activate(password);
 
   case sedutiloption::loadPBAimage:
     LOG(D) << "Loading PBA image " << argv[opts.pbafile] << " to " << argv[opts.device];
-    return d->loadPBA(argv[opts.password], argv[opts.pbafile]);
+    return d->loadPBA(password, argv[opts.pbafile]);
 
   case sedutiloption::setLockingRange:
     LOG(D) << "Setting Locking Range " <<
       (uint16_t) opts.lockingrange << " " <<
       (uint16_t) opts.lockingstate << " " <<
       argv[opts.device];;
-    return d->setLockingRange(opts.lockingrange, opts.lockingstate, argv[opts.password]);
+    return d->setLockingRange(opts.lockingrange, opts.lockingstate, password);
 
   case sedutiloption::setLockingRange_SUM:
     LOG(D) << "Setting Locking Range " << (uint16_t)opts.lockingrange << " "
            << (uint16_t)opts.lockingstate << " in Single User Mode";
-    return d->setLockingRange_SUM(opts.lockingrange, opts.lockingstate, argv[opts.password]);
+    return d->setLockingRange_SUM(opts.lockingrange, opts.lockingstate, password);
 
   case sedutiloption::enableLockingRange:
     LOG(D) << "Enabling Locking Range " << (uint16_t) opts.lockingrange << " " << argv[opts.device];
     return (d->configureLockingRange(opts.lockingrange,
-                                     (DTA_READLOCKINGENABLED | DTA_WRITELOCKINGENABLED), argv[opts.password]));
+                                     (DTA_READLOCKINGENABLED | DTA_WRITELOCKINGENABLED), password));
 
   case sedutiloption::disableLockingRange:
     LOG(D) << "Disabling Locking Range " << (uint16_t) opts.lockingrange << " " << argv[opts.device];
     return (d->configureLockingRange(opts.lockingrange, DTA_DISABLELOCKING,
-                                     argv[opts.password]));
+                                     password));
 
   case sedutiloption::readonlyLockingRange:
     LOG(D) << "Enabling Locking Range " << (uint16_t)opts.lockingrange << " " << argv[opts.device];
     return (d->configureLockingRange(opts.lockingrange,
-                                     DTA_WRITELOCKINGENABLED, argv[opts.password]));
+                                     DTA_WRITELOCKINGENABLED, password));
 
   case sedutiloption::setupLockingRange:
     LOG(D) << "Setup Locking Range " << (uint16_t)opts.lockingrange << " " << argv[opts.device];
     return (d->setupLockingRange(opts.lockingrange,
                                  (unsigned long long)atoll(argv[opts.lrstart]),
                                  (unsigned long long)atoll(argv[opts.lrlength]),
-                                 argv[opts.password]));
+                                 password));
 
   case sedutiloption::setupLockingRange_SUM:
     LOG(D) << "Setup Locking Range " << (uint16_t)opts.lockingrange <<
@@ -163,56 +170,56 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
     return (d->setupLockingRange_SUM(opts.lockingrange,
                                      (unsigned long long)atoll(argv[opts.lrstart]),
                                      (unsigned long long)atoll(argv[opts.lrlength]),
-                                     argv[opts.password]));
+                                     password));
 
   case sedutiloption::listLockingRanges:
     LOG(D) << "List Locking Ranges " << argv[opts.device];
-    return (d->listLockingRanges(argv[opts.password], -1));
+    return (d->listLockingRanges(password, -1));
 
   case sedutiloption::listLockingRange:
     LOG(D) << "List Locking Range[" << opts.lockingrange << "] " << argv[opts.device];
-    return (d->listLockingRanges(argv[opts.password], opts.lockingrange));
+    return (d->listLockingRanges(password, opts.lockingrange));
 
   case sedutiloption::rekeyLockingRange:
     LOG(D) << "Rekey Locking Range[" << opts.lockingrange << "] " << argv[opts.device];
-    return (d->rekeyLockingRange(opts.lockingrange, argv[opts.password]));
+    return (d->rekeyLockingRange(opts.lockingrange, password));
 
   case sedutiloption::setBandsEnabled:
     LOG(D) << "Set bands Enabled " << argv[opts.device];
-    return (d->setBandsEnabled(-1, argv[opts.password]));
+    return (d->setBandsEnabled(-1, password));
 
   case sedutiloption::setBandEnabled:
     LOG(D) << "Set band[" << opts.lockingrange << "] enabled " << argv[opts.device];
-    return (d->setBandsEnabled(opts.lockingrange, argv[opts.password]));
+    return (d->setBandsEnabled(opts.lockingrange, password));
 
   case sedutiloption::setMBRDone:
     LOG(D) << "Setting MBRDone " << (uint16_t)opts.mbrstate << " " << argv[opts.device];
-    return (d->setMBRDone(opts.mbrstate, argv[opts.password]));
+    return (d->setMBRDone(opts.mbrstate, password));
 
   case sedutiloption::setMBREnable:
     LOG(D) << "Setting MBREnable " << (uint16_t)opts.mbrstate << " " << argv[opts.device];
-    return (d->setMBREnable(opts.mbrstate, argv[opts.password]));
+    return (d->setMBREnable(opts.mbrstate, password));
 
   case sedutiloption::enableuser:
     LOG(D) << "Performing enable user for user " << argv[opts.userid] << " " << argv[opts.device];
-    return d->enableUser(opts.mbrstate, argv[opts.password], argv[opts.userid]);
+    return d->enableUser(opts.mbrstate, password, argv[opts.userid]);
 
   case sedutiloption::enableuserread:
     LOG(D) << "Performing enable user for user " << argv[opts.userid] << " " << argv[opts.device];
-    return d->enableUserRead(opts.mbrstate, argv[opts.password], argv[opts.userid]);
+    return d->enableUserRead(opts.mbrstate, password, argv[opts.userid]);
 
   case sedutiloption::activateLockingSP:
     LOG(D) << "Activating the LockingSP on " << argv[opts.device];
-    return d->activateLockingSP(argv[opts.password]);
+    return d->activateLockingSP(password);
 
   case sedutiloption::activateLockingSP_SUM:
     LOG(D) << "Activating the LockingSP on" << argv[opts.device] << " " << argv[opts.device];
-    return d->activateLockingSP_SUM(opts.lockingrange, argv[opts.password]);
+    return d->activateLockingSP_SUM(opts.lockingrange, password);
 
   case sedutiloption::eraseLockingRange_SUM:
     LOG(D) << "Erasing LockingRange " << opts.lockingrange <<
       " on" << argv[opts.device] << " " << argv[opts.device];
-    return d->eraseLockingRange_SUM(opts.lockingrange, argv[opts.password]);
+    return d->eraseLockingRange_SUM(opts.lockingrange, password);
 
   case sedutiloption::query:
     LOG(D) << "Performing diskquery() on " << argv[opts.device];
@@ -230,29 +237,29 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
 
   case sedutiloption::takeOwnership:
     LOG(D) << "Taking Ownership of the drive at " << argv[opts.device];
-    return d->takeOwnership(argv[opts.password]);
+    return d->takeOwnership(password);
 
   case sedutiloption::revertLockingSP:
     LOG(D) << "Performing revertLockingSP on " << argv[opts.device];
-    return d->revertLockingSP(argv[opts.password], 0);
+    return d->revertLockingSP(password, 0);
 
   case sedutiloption::setPassword:
     LOG(D) << "Performing setPassword for user " << argv[opts.userid] << " " << argv[opts.device];;
-    return d->setPassword(argv[opts.password], argv[opts.userid],
-                          argv[opts.newpassword]);
+    return d->setPassword(password, argv[opts.userid],
+                          newpassword);
 
   case sedutiloption::setPassword_SUM:
     LOG(D) << "Performing setPassword in SUM mode for user " << argv[opts.userid] << " " << argv[opts.device];
-    return d->setNewPassword_SUM(argv[opts.password], argv[opts.userid],
-                                 argv[opts.newpassword]);
+    return d->setNewPassword_SUM(password, argv[opts.userid],
+                                 newpassword);
 
   case sedutiloption::revertTPer:
     LOG(D) << "Performing revertTPer on " << argv[opts.device];
-    return d->revertTPer(argv[opts.password], 0, 0);
+    return d->revertTPer(password, 0, 0);
 
   case sedutiloption::revertNoErase:
     LOG(D) << "Performing revertLockingSP  keep global locking range on " << argv[opts.device];
-    return d->revertLockingSP(argv[opts.password], 1);
+    return d->revertLockingSP(password, 1);
 
   case sedutiloption::validatePBKDF2:
     LOG(D) << "Performing PBKDF2 validation ";
@@ -260,18 +267,16 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
 
   case sedutiloption::yesIreallywanttoERASEALLmydatausingthePSID:
   case sedutiloption::PSIDrevert:
-    LOG(D) << "Performing a PSID Revert on " << argv[opts.device] <<
-      " with password " << argv[opts.password] << " " << argv[opts.device];
-    return d->revertTPer(argv[opts.password], 1, 0);
+    LOG(D) << "Performing a PSID Revert on " << argv[opts.device];
+    return d->revertTPer(password, 1, 0);
 
   case sedutiloption::PSIDrevertAdminSP:
-    LOG(D) << "Performing a PSID RevertAdminSP on " << argv[opts.device] <<
-      " with password " << argv[opts.password] << " " << argv[opts.device];
-    return d->revertTPer(argv[opts.password], 1, 1);
+    LOG(D) << "Performing a PSID RevertAdminSP on " << argv[opts.device];
+    return d->revertTPer(password, 1, 1);
 
   case sedutiloption::eraseLockingRange:
     LOG(D) << "Erase Locking Range " << (uint16_t)opts.lockingrange << " " << argv[opts.device];
-    return (d->eraseLockingRange(opts.lockingrange, argv[opts.password]));
+    return (d->eraseLockingRange(opts.lockingrange, password));
 
   case sedutiloption::objDump:
     LOG(D) << "Performing objDump " ;
@@ -287,7 +292,7 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
 
   case sedutiloption::hashvalidation:
     LOG(D) << "Hash Validation";
-    return hashvalidate(argv[opts.password],argv[opts.device]);
+    return hashvalidate(password,argv[opts.device]);
 
   case sedutiloption::TCGreset:
     LOG(D) << "TCG Reset " <<  " " << argv[opts.device];
@@ -303,9 +308,21 @@ static uint8_t main_actions(int argc, char **argv, DtaDev *d, const DTA_OPTIONS 
   }
 }
 
+/** Wipe the resolved passwords out of memory on every path out of main(). */
+struct DtaPasswordScrubber {
+  DTA_OPTIONS & opts;
+  explicit DtaPasswordScrubber(DTA_OPTIONS & o) : opts(o) {}
+  ~DtaPasswordScrubber() {
+    DtaWipe(opts.password_data, sizeof(opts.password_data));
+    DtaWipe(opts.newpassword_data, sizeof(opts.newpassword_data));
+  }
+};
+
 int main(int argc, char * argv[])
 {
   DTA_OPTIONS opts;
+  DtaPasswordScrubber scrubber(opts);
+
   uint8_t result = DtaOptions(argc, argv, &opts);
   if (DTAERROR_SUCCESS!=result) {
     return result;

@@ -19,5 +19,17 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 * C:E********************************************************************** */
 #pragma once
 #include <string>
+#include <cstdio>
 using namespace std;
-string GetPassPhrase(const char *prompt, bool show_asterisk=true);
+
+/** Read a pass phrase from a terminal with echo disabled.
+ *
+ * @param prompt         written to the console before reading
+ * @param show_asterisk  echo one '*' per character typed
+ * @param console        terminal to prompt on and read from, or NULL for
+ *                       stdout/stdin.  sedutil-cli passes an open /dev/tty so
+ *                       that `-f prompt' still works when stdin is a pipe.
+ *
+ * Reading stops at the end of the line (LF or CR) or at end of input.
+ */
+string GetPassPhrase(const char *prompt, bool show_asterisk=true, FILE *console=NULL);
